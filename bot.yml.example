@@ -1,0 +1,15 @@
+username: account_username_here
+password: account_password_here
+access_token: api_access_token_here
+client_secret: api_client_secret_here
+subreddits:
+  - nonononoyes
+  - yesyesyesyesno
+  - nononono
+  - yesyesyesyesno
+  - nonononoaww
+  - yesyesyesno
+  - nonoyesyesnonononono
+  - yesyesyesdamn
+  - nononomaybe
+  - nonononoyesno

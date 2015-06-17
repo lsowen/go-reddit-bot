@@ -92,7 +92,7 @@ func processEntry(c *client.Client, entry client.Listing, db *sql.DB) error {
 	}
 
 	if linkResponse != nil {
-		commentTemplate := `Original Post: [reddit.com/%s](//reddit.com/%s)`
+		commentTemplate := `Original Post: [reddit.com/%s](https://reddit.com/%s)`
 		err = c.SubmitComment(linkResponse.Name, fmt.Sprintf(commentTemplate, entry.Data.Id, entry.Data.Id))
 		if err != nil {
 			return err

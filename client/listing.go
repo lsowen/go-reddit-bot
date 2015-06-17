@@ -14,6 +14,7 @@ type Listing struct {
 		Permalink string
 		Title     string
 		Url       string
+		Score     int
 		Over18    bool `json:"over_18"`
 		IsSelf    bool `json:"is_self"`
 	}

@@ -55,8 +55,8 @@ func db_entry_record(db *sql.DB, id string) error {
 }
 
 func processEntry(c *client.Client, entry client.Listing, db *sql.DB) error {
-	if entry.Data.Over18 || entry.Data.IsSelf {
-		/* Don't allow NSFW posts or Self posts */
+	if entry.Data.Over18 || entry.Data.IsSelf || entry.Data.Score < 3 {
+		/* Don't allow NSFW, Self, or low scored items */
 		return nil
 	}
 
@@ -127,8 +127,6 @@ func main() {
 		fmt.Println(err)
 		return
 	}
-
-	fmt.Println(config)
 
 	c := client.New(config.AccessToken, config.ClientSecret)
 	c.Signin(config.Username, config.Password)

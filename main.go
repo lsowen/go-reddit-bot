@@ -15,11 +15,18 @@ import (
 )
 
 type BotConfig struct {
-	Username     string
-	Password     string
-	AccessToken  string `yaml:"access_token"`
-	ClientSecret string `yaml:"client_secret"`
-	Subreddits   []string
+	Username        string
+	Password        string
+	AccessToken     string `yaml:"access_token"`
+	ClientSecret    string `yaml:"client_secret"`
+	Subreddits      []string
+	DomainBlacklist []string `yaml:"domain_blacklist"`
+}
+
+type Processor struct {
+	Config          BotConfig
+	Client          *client.Client
+	DomainBlacklist map[string]bool
 }
 
 func db_init(databasePath string) (*sql.DB, error) {
@@ -54,7 +61,11 @@ func db_entry_record(db *sql.DB, id string) error {
 	return err
 }
 
-func processEntry(c *client.Client, entry client.Listing, db *sql.DB) error {
+func processEntry(processor Processor, entry client.Listing, db *sql.DB) error {
+	if processor.DomainBlacklist[entry.Data.Domain] {
+		return nil
+	}
+
 	if entry.Data.Over18 || entry.Data.IsSelf || entry.Data.Score < 3 {
 		/* Don't allow NSFW, Self, or low scored items */
 		return nil
@@ -71,7 +82,7 @@ func processEntry(c *client.Client, entry client.Listing, db *sql.DB) error {
 		Title:     entry.Data.Title,
 		Url:       entry.Data.Url,
 	}
-	linkResponse, err := c.SubmitLink(params)
+	linkResponse, err := processor.Client.SubmitLink(params)
 	if err != nil {
 		for {
 			if captchaError, ok := err.(client.BadCaptchaError); ok {
@@ -81,7 +92,7 @@ func processEntry(c *client.Client, entry client.Listing, db *sql.DB) error {
 				response, _ := captchaReader.ReadString('\n')
 				params.CaptchaId = captchaError.CaptchaId
 				params.CaptchaResponse = strings.Trim(response, "\n")
-				linkResponse, err = c.SubmitLink(params)
+				linkResponse, err = processor.Client.SubmitLink(params)
 				if err == nil {
 					break
 				}
@@ -93,7 +104,7 @@ func processEntry(c *client.Client, entry client.Listing, db *sql.DB) error {
 
 	if linkResponse != nil {
 		commentTemplate := `Original Post: [reddit.com/%s](https://reddit.com/%s)`
-		err = c.SubmitComment(linkResponse.Name, fmt.Sprintf(commentTemplate, entry.Data.Id, entry.Data.Id))
+		err = processor.Client.SubmitComment(linkResponse.Name, fmt.Sprintf(commentTemplate, entry.Data.Id, entry.Data.Id))
 		if err != nil {
 			return err
 		}
@@ -128,8 +139,17 @@ func main() {
 		return
 	}
 
-	c := client.New(config.AccessToken, config.ClientSecret)
-	c.Signin(config.Username, config.Password)
+	processor := Processor{
+		Config: config,
+		Client: client.New(config.AccessToken, config.ClientSecret),
+	}
+
+	processor.Client.Signin(config.Username, config.Password)
+
+	processor.DomainBlacklist = make(map[string]bool, len(processor.Config.DomainBlacklist))
+	for _, domain := range processor.Config.DomainBlacklist {
+		processor.DomainBlacklist[domain] = true
+	}
 
 	db, err := db_init(database_path)
 	if err != nil {
@@ -140,9 +160,9 @@ func main() {
 
 	entries := []client.Listing{}
 
-	for _, subreddit := range config.Subreddits {
+	for _, subreddit := range processor.Config.Subreddits {
 		fmt.Printf("Fetching updates for /r/%s\n", subreddit)
-		response, err := c.GetSubreddit(fmt.Sprintf("/r/%s/hot", subreddit))
+		response, err := processor.Client.GetSubreddit(fmt.Sprintf("/r/%s/hot", subreddit))
 		if err != nil {
 			fmt.Println(err)
 		} else {
@@ -153,7 +173,7 @@ func main() {
 	entryOrder := rand.Perm(len(entries))
 	for _, order := range entryOrder {
 		entry := entries[order]
-		err := processEntry(c, entry, db)
+		err := processEntry(processor, entry, db)
 		if err != nil {
 			fmt.Println(err)
 		} else {

@@ -20,13 +20,13 @@ type BotConfig struct {
 	AccessToken     string `yaml:"access_token"`
 	ClientSecret    string `yaml:"client_secret"`
 	Subreddits      []string
-	DomainBlacklist []string `yaml:"domain_blacklist"`
+	DomainWhitelist []string `yaml:"domain_whitelist"`
 }
 
 type Processor struct {
 	Config          BotConfig
 	Client          *client.Client
-	DomainBlacklist map[string]bool
+	DomainWhitelist map[string]bool
 }
 
 func db_init(databasePath string) (*sql.DB, error) {
@@ -37,6 +37,12 @@ func db_init(databasePath string) (*sql.DB, error) {
 
 	if _, err := os.Stat(databasePath); os.IsNotExist(err) {
 		sqlStmt := "create table seen_entries (id text not null primary key);"
+		_, err = db.Exec(sqlStmt)
+		if err != nil {
+			return nil, err
+		}
+
+		sqlStmt = "create table blocked_domains (domain text not null primary key, blocked_count integer default 1);"
 		_, err = db.Exec(sqlStmt)
 		if err != nil {
 			return nil, err
@@ -61,11 +67,18 @@ func db_entry_record(db *sql.DB, id string) error {
 	return err
 }
 
-func processEntry(processor Processor, entry client.Listing, db *sql.DB) error {
-	if processor.DomainBlacklist[entry.Data.Domain] {
-		return nil
+func db_mark_blocked_domain(db *sql.DB, domain string) {
+	var blocked_count int
+	err := db.QueryRow("SELECT blocked_count FROM blocked_domains WHERE domain = ?", domain).Scan(&blocked_count)
+	if err == nil {
+		blocked_count += 1
+		db.Exec("UPDATE blocked_domains SET blocked_count = ? WHERE domain = ?", blocked_count, domain)
+	} else {
+		db.Exec("INSERT INTO blocked_domains (domain) VALUES (?)", domain)
 	}
+}
 
+func processEntry(processor Processor, entry client.Listing, db *sql.DB) error {
 	if entry.Data.Over18 || entry.Data.IsSelf || entry.Data.Score < 3 {
 		/* Don't allow NSFW, Self, or low scored items */
 		return nil
@@ -74,6 +87,11 @@ func processEntry(processor Processor, entry client.Listing, db *sql.DB) error {
 	if db_entry_exists(db, entry.Data.Id) {
 		/* Don't try to repost already posted entry */
 		fmt.Printf("Short circuiting %s\n", entry.Data.Id)
+		return nil
+	}
+
+	if !processor.DomainWhitelist[entry.Data.Domain] {
+		db_mark_blocked_domain(db, entry.Data.Domain)
 		return nil
 	}
 
@@ -146,9 +164,9 @@ func main() {
 
 	processor.Client.Signin(config.Username, config.Password)
 
-	processor.DomainBlacklist = make(map[string]bool, len(processor.Config.DomainBlacklist))
-	for _, domain := range processor.Config.DomainBlacklist {
-		processor.DomainBlacklist[domain] = true
+	processor.DomainWhitelist = make(map[string]bool, len(processor.Config.DomainWhitelist))
+	for _, domain := range processor.Config.DomainWhitelist {
+		processor.DomainWhitelist[domain] = true
 	}
 
 	db, err := db_init(database_path)

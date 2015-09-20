@@ -13,5 +13,5 @@ subreddits:
   - yesyesyesdamn
   - nononomaybe
   - nonononoyesno
-domain_blacklist:
+domain_whitelist:
   - example.com

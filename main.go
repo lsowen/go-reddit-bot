@@ -92,7 +92,8 @@ func processEntry(processor Processor, entry client.Listing, db *sql.DB) error {
 
 	if !processor.DomainWhitelist[entry.Data.Domain] {
 		db_mark_blocked_domain(db, entry.Data.Domain)
-		return nil
+		err := db_entry_record(db, entry.Data.Id)
+		return err
 	}
 
 	params := client.SubmitLinkParameters{
@@ -121,7 +122,7 @@ func processEntry(processor Processor, entry client.Listing, db *sql.DB) error {
 	}
 
 	if linkResponse != nil {
-		commentTemplate := `Original Post: [reddit.com/%s](https://reddit.com/%s)`
+		commentTemplate := `Source Post: [reddit.com/%s](https://reddit.com/%s)`
 		err = processor.Client.SubmitComment(linkResponse.Name, fmt.Sprintf(commentTemplate, entry.Data.Id, entry.Data.Id))
 		if err != nil {
 			return err

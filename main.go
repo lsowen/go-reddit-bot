@@ -78,30 +78,15 @@ func db_mark_blocked_domain(db *sql.DB, domain string) {
 	}
 }
 
-func processEntry(processor Processor, entry client.Listing, db *sql.DB) error {
-	if entry.Data.Over18 || entry.Data.IsSelf || entry.Data.Score < 3 {
-		/* Don't allow NSFW, Self, or low scored items */
-		return nil
-	}
-
-	if db_entry_exists(db, entry.Data.Id) {
-		/* Don't try to repost already posted entry */
-		fmt.Printf("Short circuiting %s\n", entry.Data.Id)
-		return nil
-	}
-
-	if !processor.DomainWhitelist[entry.Data.Domain] {
-		db_mark_blocked_domain(db, entry.Data.Domain)
-		err := db_entry_record(db, entry.Data.Id)
-		return err
-	}
-
+func postEntry(processor Processor, subreddit string, entry client.Listing) error {
 	params := client.SubmitLinkParameters{
-		Subreddit: "maybemaybemaybe",
+		Subreddit: subreddit,
 		Title:     entry.Data.Title,
 		Url:       entry.Data.Url,
 	}
+
 	linkResponse, err := processor.Client.SubmitLink(params)
+
 	if err != nil {
 		for {
 			if captchaError, ok := err.(client.BadCaptchaError); ok {
@@ -129,7 +114,33 @@ func processEntry(processor Processor, entry client.Listing, db *sql.DB) error {
 		}
 	}
 
-	err = db_entry_record(db, entry.Data.Id)
+	return nil
+}
+
+func processEntry(processor Processor, entry client.Listing, db *sql.DB) error {
+	if entry.Data.Over18 || entry.Data.IsSelf || entry.Data.Score < 5 {
+		/* Don't allow NSFW, Self, or low scored items */
+		return nil
+	}
+
+	if db_entry_exists(db, entry.Data.Id) {
+		/* Don't try to repost already posted entry */
+		fmt.Printf("Short circuiting %s\n", entry.Data.Id)
+		return nil
+	}
+
+	if !processor.DomainWhitelist[entry.Data.Domain] {
+		db_mark_blocked_domain(db, entry.Data.Domain)
+		err := db_entry_record(db, entry.Data.Id)
+		return err
+	}
+
+	postEntry(processor, "maybemaybeoriginal", entry)
+	entry = *(&entry).Copy()
+	entry.Data.Title = "Maybe Maybe Maybe"
+	postEntry(processor, "maybemaybemaybe", entry)
+
+	err := db_entry_record(db, entry.Data.Id)
 	if err != nil {
 		return err
 	}

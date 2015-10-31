@@ -20,6 +20,37 @@ type Listing struct {
 	}
 }
 
+func (l *Listing) Copy() *Listing {
+	c := &Listing{
+		Kind: l.Kind,
+		Data: struct {
+			Domain    string
+			Subreddit string
+			Id        string
+			Author    string
+			Permalink string
+			Title     string
+			Url       string
+			Score     int
+			Over18    bool `json:"over_18"`
+			IsSelf    bool `json:"is_self"`
+		}{
+			Domain:    l.Data.Domain,
+			Subreddit: l.Data.Subreddit,
+			Id:        l.Data.Id,
+			Author:    l.Data.Author,
+			Permalink: l.Data.Permalink,
+			Title:     l.Data.Title,
+			Url:       l.Data.Url,
+			Score:     l.Data.Score,
+			Over18:    l.Data.Over18,
+			IsSelf:    l.Data.IsSelf,
+		},
+	}
+
+	return c
+}
+
 type Response struct {
 	Type string
 	Data struct {
@@ -35,12 +66,6 @@ func (c *Client) GetSubreddit(resourceUrl string) (*Response, error) {
 	defer response.Body.Close()
 
 	response_struct := &Response{}
-
-	/*
-		buf, _ := ioutil.ReadAll(response.Body)
-		responseBody := bytes.NewBuffer(buf)
-		rawBody := bytes.NewBuffer(buf)
-	*/
 
 	decoder := json.NewDecoder(response.Body)
 	err = decoder.Decode(&response_struct)

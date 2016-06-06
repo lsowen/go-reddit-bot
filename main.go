@@ -21,6 +21,7 @@ type BotConfig struct {
 	ClientSecret    string `yaml:"client_secret"`
 	Subreddits      []string
 	DomainWhitelist []string `yaml:"domain_whitelist"`
+	MaxNewEntries   *uint8   `yaml:"max_new_entries"`
 }
 
 type Processor struct {
@@ -117,22 +118,22 @@ func postEntry(processor Processor, subreddit string, entry client.Listing) erro
 	return nil
 }
 
-func processEntry(processor Processor, entry client.Listing, db *sql.DB) error {
+func processEntry(processor Processor, entry client.Listing, db *sql.DB) (error, bool) {
 	if entry.Data.Over18 || entry.Data.IsSelf || entry.Data.Score < 5 {
 		/* Don't allow NSFW, Self, or low scored items */
-		return nil
+		return nil, false
 	}
 
 	if db_entry_exists(db, entry.Data.Id) {
 		/* Don't try to repost already posted entry */
 		fmt.Printf("Short circuiting %s\n", entry.Data.Id)
-		return nil
+		return nil, false
 	}
 
 	if !processor.DomainWhitelist[entry.Data.Domain] {
 		db_mark_blocked_domain(db, entry.Data.Domain)
 		err := db_entry_record(db, entry.Data.Id)
-		return err
+		return err, false
 	}
 
 	postEntry(processor, "maybemaybeoriginal", entry)
@@ -142,10 +143,10 @@ func processEntry(processor Processor, entry client.Listing, db *sql.DB) error {
 
 	err := db_entry_record(db, entry.Data.Id)
 	if err != nil {
-		return err
+		return err, false
 	}
 
-	return nil
+	return nil, true
 }
 
 func main() {
@@ -200,14 +201,22 @@ func main() {
 		}
 	}
 
+	var successfulPostings uint8 = 0
 	entryOrder := rand.Perm(len(entries))
 	for _, order := range entryOrder {
 		entry := entries[order]
-		err := processEntry(processor, entry, db)
+		err, didPostSuccessfully := processEntry(processor, entry, db)
 		if err != nil {
 			fmt.Println(err)
-		} else {
+		}
+
+		if didPostSuccessfully {
 			fmt.Printf("Successfully posted %s\n", entry.Data.Permalink)
+			successfulPostings++
+		}
+
+		if processor.Config.MaxNewEntries != nil && successfulPostings >= *processor.Config.MaxNewEntries {
+			break
 		}
 	}
 

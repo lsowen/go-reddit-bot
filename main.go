@@ -108,7 +108,10 @@ func postEntry(processor Processor, subreddit string, entry client.Listing) erro
 	}
 
 	if linkResponse != nil {
-		commentTemplate := `Source Post: [reddit.com/%s](https://reddit.com/%s)`
+		commentTemplate := `**Source Post:** [reddit.com/comments/%s/](https://reddit.com/comments/%s/)
+
+---
+I'm a bot.  [Source](https://github.com/lsowen/go-reddit-bot) | [Message handler](https://www.reddit.com/message/compose?to=ninja_haiku)`
 		err = processor.Client.SubmitComment(linkResponse.Name, fmt.Sprintf(commentTemplate, entry.Data.Id, entry.Data.Id))
 		if err != nil {
 			return err

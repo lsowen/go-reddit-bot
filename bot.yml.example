@@ -15,3 +15,5 @@ subreddits:
   - nonononoyesno
 domain_whitelist:
   - example.com
+extension_blacklist:
+  - .png

@@ -9,25 +9,29 @@ import (
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"math/rand"
-	"maybemaybemaybe_bot/client"
+	"github.com/lsowen/maybemaybemaybe_bot/client"
+	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
 type BotConfig struct {
-	Username        string
-	Password        string
-	AccessToken     string `yaml:"access_token"`
-	ClientSecret    string `yaml:"client_secret"`
-	Subreddits      []string
-	DomainWhitelist []string `yaml:"domain_whitelist"`
-	MaxNewEntries   *uint8   `yaml:"max_new_entries"`
+	Username           string
+	Password           string
+	AccessToken        string `yaml:"access_token"`
+	ClientSecret       string `yaml:"client_secret"`
+	Subreddits         []string
+	DomainWhitelist    []string `yaml:"domain_whitelist"`
+	ExtensionBlacklist []string `yaml:"extension_blacklist"`
+	MaxNewEntries      *uint8   `yaml:"max_new_entries"`
 }
 
 type Processor struct {
-	Config          BotConfig
-	Client          *client.Client
-	DomainWhitelist map[string]bool
+	Config             BotConfig
+	Client             *client.Client
+	DomainWhitelist    map[string]bool
+	ExtensionBlacklist map[string]bool
 }
 
 func db_init(databasePath string) (*sql.DB, error) {
@@ -121,6 +125,16 @@ I'm a bot.  [Source](https://github.com/lsowen/go-reddit-bot) | [Message handler
 	return nil
 }
 
+func extractExtension(entry client.Listing) (error, string) {
+	u, err := url.ParseRequestURI(entry.Data.Url)
+	if err != nil {
+		return err, ""
+	}
+
+	ext := filepath.Ext(u.Path)
+	return nil, strings.ToLower(ext)
+}
+
 func processEntry(processor Processor, entry client.Listing, db *sql.DB) (error, bool) {
 	if entry.Data.Over18 || entry.Data.IsSelf || entry.Data.Score < 5 {
 		/* Don't allow NSFW, Self, or low scored items */
@@ -139,12 +153,20 @@ func processEntry(processor Processor, entry client.Listing, db *sql.DB) (error,
 		return err, false
 	}
 
+	err, ext := extractExtension(entry)
+	if err == nil {
+		if processor.ExtensionBlacklist[ext] {
+			err := db_entry_record(db, entry.Data.Id)
+			return err, false
+		}
+	}
+
 	postEntry(processor, "maybemaybeoriginal", entry)
 	entry = *(&entry).Copy()
 	entry.Data.Title = "Maybe Maybe Maybe"
 	postEntry(processor, "maybemaybemaybe", entry)
 
-	err := db_entry_record(db, entry.Data.Id)
+	err = db_entry_record(db, entry.Data.Id)
 	if err != nil {
 		return err, false
 	}
@@ -183,6 +205,11 @@ func main() {
 	processor.DomainWhitelist = make(map[string]bool, len(processor.Config.DomainWhitelist))
 	for _, domain := range processor.Config.DomainWhitelist {
 		processor.DomainWhitelist[domain] = true
+	}
+
+	processor.ExtensionBlacklist = make(map[string]bool, len(processor.Config.ExtensionBlacklist))
+	for _, extension := range processor.Config.ExtensionBlacklist {
+		processor.ExtensionBlacklist[strings.ToLower(extension)] = true
 	}
 
 	db, err := db_init(database_path)
